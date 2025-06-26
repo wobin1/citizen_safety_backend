@@ -17,5 +17,7 @@ async def resolve(alert_id: str, current_user: dict = Depends(get_current_user))
     return await resolve_alert(alert_id, current_user)
 
 @router.get("/")
-async def get_active_alerts(current_user: dict = Depends(get_current_user)):
-    return await get_alerts(current_user)
+# async def get_active_alerts(current_user: dict = Depends(get_current_user)):
+async def get_active_alerts():
+    # return await get_alerts(current_user)
+    return await get_alerts()

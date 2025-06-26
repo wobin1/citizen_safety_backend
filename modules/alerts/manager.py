@@ -82,9 +82,9 @@ async def resolve_alert(alert_id: str, current_user: dict = Depends(get_current_
         logger.error(f"Error resolving alert: {e}", exc_info=True)
         return error_response(str(e), 500)
 
-async def get_alerts(current_user: dict = Depends(get_current_user)) -> dict:
+async def get_alerts() -> dict:
     """Get active alerts"""
-    logger.debug(f"get_alerts called by user: {current_user}")
+    # logger.debug(f"get_alerts called by user: {current_user}")
     try:
         query = """
         SELECT * FROM alerts 
