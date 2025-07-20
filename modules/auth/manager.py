@@ -45,12 +45,12 @@ async def register_user(user: UserRegister) -> dict:
         return error_response(str(e), 500)
 
 async def login_user(user: UserLogin) -> dict:
-    """Authenticate user and return JWT"""
+    """Authenticate user and return JWT and user data"""
     logger.info(f"Attempting login for user: {user.username}")
     try:
         result = await execute_query(
             """
-            SELECT id, username, password_hash, role FROM users
+            SELECT id, username, password_hash, role, created_at, last_login_at FROM users
             WHERE username = $1
             """,
             (user.username,),
@@ -73,7 +73,14 @@ async def login_user(user: UserLogin) -> dict:
             commit=True
         )
         logger.debug(f"Updated last_login_at for user id: {result[0]}")
-        return success_response({"token": token}, "Login successful")
+        user_data = {
+            "id": result[0],
+            "username": result[1],
+            "role": result[3],
+            "created_at": result[4].isoformat() if result[4] else None,
+            "last_login_at": result[5].isoformat() if result[5] else None
+        }
+        return success_response({"token": token, "user": user_data}, "Login successful")
     except Exception as e:
         logger.error(f"Error logging in user '{user.username}': {e}")
         return error_response(str(e), 500)

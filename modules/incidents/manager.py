@@ -96,23 +96,38 @@ async def validate_incident(incident_id: str, validation: IncidentValidate, curr
         return error_response(str(e), 500)
 
 async def get_incidents(filters: Optional[dict] = None, current_user: dict = Depends(get_current_user)) -> dict:
-    """Get incidents with optional filters"""
+    """Get incidents with optional filters, search, and pagination"""
     logger.info(f"User {current_user['id']} is retrieving incidents with filters: {filters}")
     try:
         query = "SELECT * FROM incidents"
+        count_query = "SELECT COUNT(*) FROM incidents"
         params = []
+        conditions = []
+        param_index = 1
+        # Filtering
         if filters:
-            conditions = []
-            if filters.get('type'):
-                conditions.append("type = $1")
-                params.append(filters['type'])
             if filters.get('status'):
-                conditions.append("status = $2")
+                conditions.append(f"status = ${param_index}")
                 params.append(filters['status'])
-            if conditions:
-                query += " WHERE " + ' AND '.join(conditions)
+                param_index += 1
+            if filters.get('search'):
+                conditions.append(f"(type ILIKE ${param_index} OR description ILIKE ${param_index})")
+                params.append(f"%{filters['search']}%")
+                param_index += 1
+        if conditions:
+            where_clause = ' WHERE ' + ' AND '.join(conditions)
+            query += where_clause
+            count_query += where_clause
+        # Pagination
+        page = int(filters.get('page', 1))
+        page_size = int(filters.get('page_size', 10))
+        offset = (page - 1) * page_size
+        query += f" ORDER BY created_at DESC LIMIT {page_size} OFFSET {offset}"
         logger.debug(f"Executing query: {query} with params: {params}")
         results = await execute_query(query, tuple(params))
+        # Get total count for pagination
+        total_count_result = await execute_query(count_query, tuple(params))
+        total_count = total_count_result[0][0] if total_count_result else 0
         incidents = [
             {
                 "id": r[0],
@@ -128,8 +143,32 @@ async def get_incidents(filters: Optional[dict] = None, current_user: dict = Dep
             }
             for r in results
         ]
-        logger.info(f"Retrieved {len(incidents)} incidents")
-        return success_response(incidents, "Incidents retrieved successfully")
+        logger.info(f"Retrieved {len(incidents)} incidents (total: {total_count})")
+        base_url = '/api/incidents/'
+        next_page = None
+        prev_page = None
+        if (page * page_size) < total_count:
+            next_page = f"{base_url}?page={page + 1}&page_size={page_size}"
+            if filters.get('status'):
+                next_page += f"&status={filters['status']}"
+            if filters.get('search'):
+                next_page += f"&search={filters['search']}"
+        if page > 1:
+            prev_page = f"{base_url}?page={page - 1}&page_size={page_size}"
+            if filters.get('status'):
+                prev_page += f"&status={filters['status']}"
+            if filters.get('search'):
+                prev_page += f"&search={filters['search']}"
+        logger.info(f"Retrieved {len(incidents)} incidents (total: {total_count})")
+        return success_response({
+            "incidents": incidents,
+            "total": total_count,
+            "page": page,
+            "page_size": page_size,
+            "next_page": next_page,
+            "prev_page": prev_page
+        }, "Incidents retrieved successfully")
+
     except Exception as e:
         logger.exception("Error retrieving incidents")
         return error_response(str(e), 500)
@@ -146,10 +185,16 @@ async def get_incident(incident_id: str, current_user: dict = Depends(get_curren
             logger.warning(f"Invalid incident_id format: {incident_id["id"]}")
             return error_response("Invalid incident ID format", 400)
 
-        query = "SELECT * FROM incidents WHERE id = $1"
+        # Join with users table to get the user name
+        query = """
+            SELECT i.*, u.username as user_name
+            FROM incidents i
+            JOIN users u ON i.user_id = u.id
+            WHERE i.id = $1
+        """
         result = await execute_query(query, (incident_id["id"],), fetch_one=True)
         if not result:
-            logger.warning(f"Incident {incident_id["id"]} not found")
+            logger.warning(f"Incident {incident_id['id']} not found")
             return error_response("Incident not found", 404)
         incident = {
             "id": result[0],
@@ -161,7 +206,8 @@ async def get_incident(incident_id: str, current_user: dict = Depends(get_curren
             "status": result[6],
             "created_at": result[7].isoformat(),
             "validated_at": result[8].isoformat() if result[8] else None,
-            "rejection_reason": result[9]
+            "rejection_reason": result[9],
+            "user_name": result[10]
         }
         logger.info(f"Incident {incident_id["id"]} retrieved successfully")
         return success_response(incident, "Incident retrieved successfully")
@@ -169,3 +215,65 @@ async def get_incident(incident_id: str, current_user: dict = Depends(get_curren
         logger.exception("Error retrieving incident")
         return error_response(str(e), 500)
 
+async def reject_incident(incident_id: str, rejection_reason: str, current_user: dict) -> dict:
+    """
+    Reject an incident by ID with a given reason.
+    Only emergency_service or admin users should be allowed to reject.
+    """
+    logger.info(f"User {current_user['id']} is attempting to reject incident {incident_id} for reason: {rejection_reason}")
+    try:
+        # Check user role
+        if current_user.get("role") not in ("emergency_service", "admin"):
+            logger.warning(f"User {current_user['id']} does not have permission to reject incidents")
+            return error_response("Permission denied", 403)
+
+        # Validate incident_id is a valid UUID
+        from uuid import UUID
+        try:
+            UUID(incident_id)
+        except ValueError:
+            logger.warning(f"Invalid incident_id format: {incident_id}")
+            return error_response("Invalid incident ID format", 400)
+
+        # Check if incident exists and is pending
+        query = "SELECT status FROM incidents WHERE id = $1"
+        result = await execute_query(query, (incident_id,), fetch_one=True)
+        if not result:
+            logger.warning(f"Incident {incident_id} not found")
+            return error_response("Incident not found", 404)
+        if result[0] != "PENDING":
+            logger.warning(f"Incident {incident_id} is not pending and cannot be rejected")
+            return error_response("Only pending incidents can be rejected", 400)
+
+        # Update incident status to REJECTED and set rejection_reason
+        update_query = """
+            UPDATE incidents
+            SET status = 'REJECTED', rejection_reason = $2, validated_at = NOW()
+            WHERE id = $1
+            RETURNING id, status, rejection_reason, validated_at
+        """
+        update_result = await execute_query(update_query, (incident_id, rejection_reason), commit=True, fetch_one=True)
+        if not update_result:
+            logger.error(f"Failed to update incident {incident_id} to REJECTED")
+            return error_response("Failed to reject incident", 500)
+
+        logger.info(f"Incident {incident_id} rejected successfully")
+        # Optionally notify the citizen who reported the incident
+        try:
+            # Get user_id for notification
+            user_query = "SELECT user_id FROM incidents WHERE id = $1"
+            user_result = await execute_query(user_query, (incident_id,), fetch_one=True)
+            if user_result:
+                await notify_citizen(user_result[0], f"Your incident report was rejected: {rejection_reason}")
+        except Exception as notify_exc:
+            logger.warning(f"Failed to notify citizen for incident {incident_id}: {notify_exc}")
+
+        return success_response({
+            "id": update_result[0],
+            "status": update_result[1],
+            "rejection_reason": update_result[2],
+            "validated_at": update_result[3].isoformat() if update_result[3] else None
+        }, "Incident rejected successfully")
+    except Exception as e:
+        logger.exception("Error rejecting incident")
+        return error_response(str(e), 500)

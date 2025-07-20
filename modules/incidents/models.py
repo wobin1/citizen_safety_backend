@@ -23,3 +23,7 @@ class IncidentResponse(BaseModel):
     created_at: str
     validated_at: Optional[str]
     rejection_reason: Optional[str]
+
+
+class IncidentReject(BaseModel):
+    rejection_reason: str
