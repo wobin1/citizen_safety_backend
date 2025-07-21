@@ -49,3 +49,9 @@ async def reject_incident_endpoint(
     if not rejection_reason:
         return {"status": "error", "message": "Rejection reason is required", "data": None}
     return await reject_incident(incident_id, rejection_reason, current_user)
+
+@router.get("/stats/dashboard")
+async def get_stats(current_user: dict = Depends(get_current_user)):
+    from .manager import get_incident_stats
+    return await get_incident_stats(current_user)
+

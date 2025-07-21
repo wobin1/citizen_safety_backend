@@ -277,3 +277,48 @@ async def reject_incident(incident_id: str, rejection_reason: str, current_user:
     except Exception as e:
         logger.exception("Error rejecting incident")
         return error_response(str(e), 500)
+
+async def get_incident_stats(current_user: dict) -> dict:
+    """Return stats: total pending, rejected, validated, and 5 latest pending reports"""
+    try:
+        # Get counts
+        count_query = """
+            SELECT status, COUNT(*) FROM incidents
+            WHERE status IN ('PENDING', 'REJECTED', 'VALIDATED')
+            GROUP BY status
+        """
+        count_results = await execute_query(count_query)
+        stats = {"PENDING": 0, "REJECTED": 0, "VALIDATED": 0}
+        for row in count_results:
+            stats[row[0]] = row[1]
+        # Get 5 latest pending
+        latest_query = """
+            SELECT id, user_id, type, description, location_lat, location_lon, status, created_at
+            FROM incidents
+            WHERE status = 'PENDING'
+            ORDER BY created_at DESC
+            LIMIT 5
+        """
+        latest_results = await execute_query(latest_query)
+        latest_pending = [
+            {
+                "id": r[0],
+                "user_id": r[1],
+                "type": r[2],
+                "description": r[3],
+                "location_lat": r[4],
+                "location_lon": r[5],
+                "status": r[6],
+                "created_at": r[7].isoformat() if r[7] else None
+            }
+            for r in latest_results
+        ]
+        return success_response({
+            "pending": stats["PENDING"],
+            "rejected": stats["REJECTED"],
+            "validated": stats["VALIDATED"],
+            "latest_pending": latest_pending
+        }, "Incident stats retrieved successfully")
+    except Exception as e:
+        logger.exception("Error retrieving incident stats")
+        return error_response(str(e), 500)
