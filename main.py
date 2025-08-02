@@ -10,6 +10,7 @@ from modules.auth.router import router as auth_router
 from modules.incidents.router import router as incidents_router
 from modules.alerts.router import router as alerts_router
 from modules.shared.schema import create_tables
+from modules.emergency.router import router as emergency_router
 import os
 from dotenv import load_dotenv
 
@@ -30,6 +31,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(incidents_router, prefix="/api/incidents")
 app.include_router(alerts_router, prefix="/api/alerts")
+app.include_router(emergency_router, prefix="/api/emergency")
 
 @app.on_event("startup")
 async def startup_event():

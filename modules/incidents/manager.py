@@ -11,6 +11,13 @@ from datetime import datetime
 
 logger = logging.getLogger("incidents.manager")
 
+def serialize_row(row):
+            d = dict(row)
+            for k, v in d.items():
+                if isinstance(v, datetime):
+                    d[k] = v.isoformat()
+            return d
+
 async def submit_incident(incident: IncidentSubmit, current_user: dict = Depends(get_current_user)) -> dict:
     """Submit a new incident report"""
     logger.info(f"User {current_user['id']} is submitting an incident: {incident}")
@@ -128,19 +135,10 @@ async def get_incidents(filters: Optional[dict] = None, current_user: dict = Dep
         # Get total count for pagination
         total_count_result = await execute_query(count_query, tuple(params))
         total_count = total_count_result[0][0] if total_count_result else 0
+        from datetime import datetime
+
         incidents = [
-            {
-                "id": r[0],
-                "user_id": r[1],
-                "type": r[2],
-                "description": r[3],
-                "location_lat": r[4],
-                "location_lon": r[5],
-                "status": r[6],
-                "created_at": r[7].isoformat(),
-                "validated_at": r[8].isoformat() if r[8] else None,
-                "rejection_reason": r[9]
-            }
+            serialize_row(r)
             for r in results
         ]
         logger.info(f"Retrieved {len(incidents)} incidents (total: {total_count})")
@@ -173,16 +171,17 @@ async def get_incidents(filters: Optional[dict] = None, current_user: dict = Dep
         logger.exception("Error retrieving incidents")
         return error_response(str(e), 500)
 
-async def get_incident(incident_id: str, current_user: dict = Depends(get_current_user)) -> dict:
+async def get_incident(filters: dict, current_user: dict = Depends(get_current_user)) -> dict:
     """Get a single incident by ID"""
+    incident_id = filters.get("id")
     logger.info(f"User {current_user['id']} is retrieving incident {incident_id}")
     try:
         # Validate incident_id is a valid UUID
         from uuid import UUID
         try:
-            UUID(incident_id["id"])
+            UUID(str(incident_id))
         except ValueError:
-            logger.warning(f"Invalid incident_id format: {incident_id["id"]}")
+            logger.warning(f"Invalid incident_id format: {incident_id}")
             return error_response("Invalid incident ID format", 400)
 
         # Join with users table to get the user name
@@ -192,24 +191,14 @@ async def get_incident(incident_id: str, current_user: dict = Depends(get_curren
             JOIN users u ON i.user_id = u.id
             WHERE i.id = $1
         """
-        result = await execute_query(query, (incident_id["id"],), fetch_one=True)
+        result = await execute_query(query, (incident_id,), fetch_one=True)
         if not result:
-            logger.warning(f"Incident {incident_id['id']} not found")
+            logger.warning(f"Incident {incident_id} not found")
             return error_response("Incident not found", 404)
-        incident = {
-            "id": result[0],
-            "user_id": result[1],
-            "type": result[2],
-            "description": result[3],
-            "location_lat": result[4],
-            "location_lon": result[5],
-            "status": result[6],
-            "created_at": result[7].isoformat(),
-            "validated_at": result[8].isoformat() if result[8] else None,
-            "rejection_reason": result[9],
-            "user_name": result[10]
-        }
-        logger.info(f"Incident {incident_id["id"]} retrieved successfully")
+        # result is a single row, not iterable
+        incident = serialize_row(result)
+
+        logger.info(f"Incident {incident_id} retrieved successfully")
         return success_response(incident, "Incident retrieved successfully")
     except Exception as e:
         logger.exception("Error retrieving incident")

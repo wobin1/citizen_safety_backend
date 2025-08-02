@@ -9,7 +9,7 @@ class AlertTrigger(BaseModel):
     location_lat: float
     location_lon: Optional[float]
     radius_km: float
-radius_km: float
+    broadcast_type: str
 
 class AlertResponse(BaseModel):
     id: UUID
