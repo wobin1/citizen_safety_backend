@@ -1,0 +1,5 @@
+# .gitignore
+.env
+firebase_service_account.json
+*.key
+*.pem
