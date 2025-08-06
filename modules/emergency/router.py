@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from .models import EmergencySubmit, EmergencyValidate, EmergencyReject
-from .manager import submit_emergency, validate_emergency, get_emergencies, get_emergency, reject_emergency, get_emergency_stats
+from .manager import submit_emergency, validate_emergency, get_emergencies, get_emergency, reject_emergency, get_emergency_stats, mark_action_taken
 from typing import Optional, Dict
 from modules.auth.manager import get_current_user
 
@@ -15,6 +15,11 @@ async def submit(emergency: EmergencySubmit, current_user: dict = Depends(get_cu
 async def validate(emergency_id: str, validation: EmergencyValidate, current_user: dict = Depends(get_current_user)):
     """Validate or update an emergency"""
     return await validate_emergency(emergency_id, validation, current_user)
+
+@router.post("/{emergency_id}/action-taken")
+async def action_taken(emergency_id: str, current_user: dict = Depends(get_current_user)):
+    """Mark an emergency as action taken"""
+    return await mark_action_taken(emergency_id, current_user)
 
 @router.get("/")
 async def get_all_emergencies(

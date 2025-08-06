@@ -86,18 +86,16 @@ async def validate_emergency(emergency_id: str, validation: EmergencyValidate, c
         query = """
         UPDATE emergency 
         SET status = $1, 
-            validated_at = $2,
-            rejection_reason = $3,
+            rejection_reason = $2,
             updated_at = NOW(),
-            responder_id = $4
-        WHERE id = $5
+            responder_id = $3
+        WHERE id = $4
         RETURNING id
         """
         params = (
             validation.status,
-            datetime.now() if validation.status in ['DISPATCHED', 'RESOLVED'] else None,
             validation.rejection_reason,
-            validation.responder_id,
+            current_user['id'],
             emergency_id
         )
         logger.debug(f"Executing query: {query} with params: {params}")
@@ -114,6 +112,42 @@ async def validate_emergency(emergency_id: str, validation: EmergencyValidate, c
     except Exception as e:
         logger.exception("Error validating emergency")
         return error_response(str(e), 500)
+
+async def mark_action_taken(emergency_id: str, current_user: dict) -> dict:
+    """
+    Mark an emergency as 'VALIDATED' (action taken).
+    Only emergency_service or admin can perform this action.
+    """
+    logger.info(f"User {current_user['id']} is marking emergency {emergency_id} as action taken (VALIDATED)")
+    if current_user['role'] not in ['emergency_service', 'admin']:
+        logger.warning(f"Unauthorized action taken attempt by user {current_user['id']}")
+        return error_response("Unauthorized", 403)
+
+    try:
+        query = """
+        UPDATE emergency
+        SET status = 'ACTION_TAKEN',
+            updated_at = NOW(),
+            responder_id = $1
+        WHERE id = $2
+        RETURNING id
+        """
+        params = (
+            current_user['id'],
+            emergency_id
+        )
+        logger.debug(f"Executing query: {query} with params: {params}")
+        result = await execute_query(query, params, commit=True, fetch_one=True)
+        if not result:
+            logger.warning(f"Emergency {emergency_id} not found for action taken")
+            return error_response("Emergency not found", 404)
+
+        logger.info(f"Emergency {emergency_id} marked as action taken (VALIDATED) successfully")
+        return success_response({"emergency_id": result[0]}, "Emergency marked as action taken (VALIDATED) successfully")
+    except Exception as e:
+        logger.exception("Error marking emergency as action taken")
+        return error_response(str(e), 500)
+
 
 async def get_emergencies(filters: Optional[dict] = None, current_user: dict = Depends(get_current_user)) -> dict:
     """Get emergencies with optional filters, search, and pagination"""
@@ -246,15 +280,12 @@ async def reject_emergency(emergency_id: str, rejection_reason: str, current_use
         if not result:
             logger.warning(f"Emergency {emergency_id} not found")
             return error_response("Emergency not found", 404)
-        if result[0] != "REPORTED":
-            logger.warning(f"Emergency {emergency_id} is not reported and cannot be rejected")
-            return error_response("Only reported emergencies can be rejected", 400)
-
+        
         update_query = """
             UPDATE emergency
-            SET status = 'CANCELLED', rejection_reason = $2, validated_at = NOW(), updated_at = NOW()
+            SET status = 'REJECTED', rejection_reason = $2, updated_at = NOW()
             WHERE id = $1
-            RETURNING id, status, rejection_reason, validated_at
+            RETURNING id, status, rejection_reason
         """
         update_result = await execute_query(update_query, (emergency_id, rejection_reason), commit=True, fetch_one=True)
         if not update_result:
@@ -274,7 +305,6 @@ async def reject_emergency(emergency_id: str, rejection_reason: str, current_use
             "id": update_result[0],
             "status": update_result[1],
             "rejection_reason": update_result[2],
-            "validated_at": update_result[3].isoformat() if update_result[3] else None
         }, "Emergency rejected successfully")
     except Exception as e:
         logger.exception("Error rejecting emergency")

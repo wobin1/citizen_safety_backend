@@ -101,14 +101,14 @@ async def trigger_alert(alert: AlertTrigger, current_user: dict = Depends(get_cu
         logger.info(f"Creating alert with id: {alert_id} and data: {alert}")
         query = """
         INSERT INTO alerts 
-        (id, trigger_source, type, message, location_lat, location_lon, radius_km, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        (id, trigger_source, type, message, location_lat, location_lon, radius_km, created_at, triggered_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
         RETURNING id, created_at
         """
-        logger.debug(f"Executing alert insert query: {query} with params: {(alert_id, alert.trigger_source, alert.broadcast_type, alert.message, alert.location_lat, alert.location_lon, alert.radius_km)}")
+        logger.debug(f"Executing alert insert query: {query} with params: {(alert_id, alert.trigger_source, alert.broadcast_type, alert.message, alert.location_lat, alert.location_lon, alert.radius_km, current_user['id'])}")
         result = await execute_query(
             query,
-            (alert_id, alert.trigger_source, alert.type, alert.message, alert.location_lat, alert.location_lon, alert.radius_km),
+            (alert_id, alert.trigger_source, alert.type, alert.message, alert.location_lat, alert.location_lon, alert.radius_km, current_user['id']),
             commit=True,
             fetch_one=True
         )
@@ -123,7 +123,8 @@ async def trigger_alert(alert: AlertTrigger, current_user: dict = Depends(get_cu
             "location_lat": alert.location_lat,
             "location_lon": alert.location_lon,
             "radius_km": alert.radius_km,
-            "broadcast_type": alert.broadcast_type
+            "broadcast_type": alert.broadcast_type,
+            "triggered_by": current_user['id']
         }
         logger.debug(f"Prepared alert_data for broadcast: {alert_data}")
         # Determine recipients
@@ -235,7 +236,9 @@ async def get_all_alerts(filters: dict = None) -> dict:
     logger = logging.getLogger("alerts.manager")
     logger.info(f"Retrieving alerts with filters: {filters}")
     try:
-        query = "SELECT * FROM alerts"
+        query = """
+            SELECT * FROM alerts
+        """
         count_query = "SELECT COUNT(*) FROM alerts"
         params = []
         conditions = []
@@ -309,9 +312,11 @@ async def get_alert_by_id(alert_id: str):
     from modules.shared.response import success_response, error_response
 
     query = """
-        SELECT id, trigger_source, type, message, location_lat, location_lon, radius_km, status, created_at, cooldown_until
-        FROM alerts
-        WHERE id = $1
+        SELECT a.id, a.trigger_source, a.type, a.message, a.location_lat, a.location_lon, a.radius_km, a.status, a.created_at, a.cooldown_until,
+               u.username AS triggered_by_username
+        FROM alerts a
+        LEFT JOIN users u ON a.triggered_by = u.id
+        WHERE a.id = $1
     """
     try:
         result = await execute_query(query, (alert_id,))

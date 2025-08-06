@@ -9,12 +9,25 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+async def is_table_empty(table_name):
+    """Check if a table is empty."""
+    result = await execute_query(
+        f"SELECT COUNT(*) as count FROM {table_name}",
+        (),
+        fetch_one=True
+    )
+    return result and result["count"] == 0
+
 async def seed_data():
-    """Seed initial data into the database"""
+    """Seed initial data into the database if tables are empty"""
     try:
         logger.info("Starting database seeding process.")
 
         # --- Seed 5 users (1 admin, 2 emergency_service, 2 citizens) ---
+        if not await is_table_empty("users"):
+            logger.info("Users table is not empty. Skipping user seeding.")
+            return
+
         users = [
             ("admin", "admin123", "admin"),
             ("responder1", "responder123", "emergency_service"),
@@ -50,6 +63,10 @@ async def seed_data():
             logger.info(f"User '{username}' seeded with ID: {user_ids[username]}")
 
         # --- Seed 5 incidents ---
+        if not await is_table_empty("incidents"):
+            logger.info("Incidents table is not empty. Skipping incident seeding.")
+            return
+
         incidents = [
             (
                 uuid.UUID(user_ids["citizen1"]), "theft", "Stolen bicycle near park",
@@ -105,6 +122,10 @@ async def seed_data():
             logger.info(f"Incident {i} seeded (or already existed).")
 
         # --- Seed 5 alerts ---
+        if not await is_table_empty("alerts"):
+            logger.info("Alerts table is not empty. Skipping alert seeding.")
+            return
+
         alerts = [
             (
                 "emergency_service", "active shooter", "Active shooter reported downtown",
@@ -145,38 +166,42 @@ async def seed_data():
             logger.info(f"Alert {i} seeded (or already existed).")
 
         # --- Seed 5 emergencies ---
+        if not await is_table_empty("emergency"):
+            logger.info("Emergency table is not empty. Skipping emergency seeding.")
+            return
+
         emergencies = [
             (
                 uuid.UUID(user_ids["citizen1"]), "medical_emergency", "Person collapsed in street",
-                "REPORTED", 40.7128, -74.0060, "CRITICAL", uuid.UUID(user_ids["responder1"]),
+                "PENDING", 40.7128, -74.0060, "CRITICAL", uuid.UUID(user_ids["responder1"]),
                 "https://images.unsplash.com/photo-1576091160550-2173dba999ef",
                 "https://freesound.org/data/previews/587/587216_4333520-lq.mp3",
                 "https://www.pexels.com/video/medical-emergency-scene-3046648/"
             ),
             (
                 uuid.UUID(user_ids["citizen2"]), "fire_emergency", "House fire reported",
-                "DISPATCHED", 34.0522, -118.2437, "HIGH", uuid.UUID(user_ids["responder1"]),
+                "VALIDATED", 34.0522, -118.2437, "HIGH", uuid.UUID(user_ids["responder1"]),
                 "https://images.unsplash.com/photo-1532680678473-a16f2c6e5735",
                 "https://freesound.org/data/previews/614/614169_5674468-lq.mp3",
                 "https://www.pexels.com/video/fire-burning-3010717/"
             ),
             (
                 uuid.UUID(user_ids["citizen1"]), "crime_emergency", "Robbery in progress",
-                "REPORTED", 51.5074, -0.1278, "CRITICAL", uuid.UUID(user_ids["responder2"]),
+                "PENDING", 51.5074, -0.1278, "CRITICAL", uuid.UUID(user_ids["responder2"]),
                 "https://images.unsplash.com/photo-1595675021516-8444b946b4d4",
                 "https://freesound.org/data/previews/614/614168_14136021-lq.mp3",
                 "https://www.pexels.com/video/city-street-scene-3046648/"
             ),
             (
                 uuid.UUID(user_ids["citizen2"]), "disaster_emergency", "Flooding in neighborhood",
-                "RESOLVED", 35.6762, 139.6503, "MEDIUM", uuid.UUID(user_ids["responder2"]),
+                "ACTION_TAKEN", 35.6762, 139.6503, "MEDIUM", uuid.UUID(user_ids["responder2"]),
                 "https://images.unsplash.com/photo-1593642532973-d31b97d0e6b3",
                 "https://freesound.org/data/previews/614/614170_14136021-lq.mp3",
                 "https://www.pexels.com/video/flooded-area-3010718/"
             ),
             (
                 uuid.UUID(user_ids["citizen1"]), "medical_emergency", "Heart attack reported",
-                "CANCELLED", 48.8566, 2.3522, "HIGH", None,
+                "REJECTED", 48.8566, 2.3522, "HIGH", None,
                 "https://images.unsplash.com/photo-1583911860205-738d9c3198a1",
                 "https://freesound.org/data/previews/587/587217_4333520-lq.mp3",
                 "https://www.pexels.com/video/medical-emergency-3046649/"
@@ -190,12 +215,17 @@ async def seed_data():
                 INSERT INTO emergency (
                     id, user_id, type, description, status, created_at,
                     image_url, voice_note_url, video_url,
-                    location_lat, location_lon, severity, responder_id
+                    location_lat, location_lon, severity, responder_id,
+                    rejection_reason
                 )
-                VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7, $8, $9, $10, $11, $12)
+                VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7, $8, $9, $10, $11, $12, $13)
                 ON CONFLICT (id) DO NOTHING
                 """,
-                (emergency_id, user_id, type_, desc, status, img, voice, video, lat, lon, severity, responder_id),
+                (
+                    emergency_id, user_id, type_, desc, status, img, voice, video,
+                    lat, lon, severity, responder_id,
+                    "Insufficient evidence" if status == "REJECTED" else None
+                ),
                 commit=True
             )
             logger.info(f"Emergency {i} seeded (or already existed).")

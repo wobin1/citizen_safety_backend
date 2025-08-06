@@ -40,6 +40,7 @@ async def create_tables():
         CREATE TABLE IF NOT EXISTS alerts (
             id UUID PRIMARY KEY,
             trigger_source VARCHAR(50) NOT NULL CHECK (trigger_source IN ('emergency_service', 'sensor', 'manual')),
+            triggered_by UUID REFERENCES users(id) ON DELETE SET NULL,
             type VARCHAR(50) NOT NULL CHECK (type IN ('active shooter', 'natural disaster', 'missing person')),
             message TEXT NOT NULL,
             broadcast_type VARCHAR(50) NOT NULL CHECK (broadcast_type IN ('broadcast_all', 'broadcast_neighborhood')),
@@ -63,11 +64,12 @@ async def create_tables():
             voice_note_url TEXT,
             video_url TEXT,
             severity VARCHAR(20) NOT NULL CHECK (severity IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')) DEFAULT 'MEDIUM',
-            status VARCHAR(20) NOT NULL CHECK (status IN ('REPORTED', 'DISPATCHED', 'RESOLVED', 'CANCELLED')) DEFAULT 'REPORTED',
+            status VARCHAR(20) NOT NULL CHECK (status IN ('PENDING', 'VALIDATED', 'REJECTED', 'ACTION_TAKEN')) DEFAULT 'PENDING',
             created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
             updated_at TIMESTAMP WITH TIME ZONE,
             responder_id UUID REFERENCES users(id) ON DELETE SET NULL,
-            response_time TIMESTAMP WITH TIME ZONE
+            response_time TIMESTAMP WITH TIME ZONE,
+            rejection_reason TEXT
         );
 
         -- Create standard indexes for location-based queries

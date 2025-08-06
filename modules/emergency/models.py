@@ -2,17 +2,17 @@ from pydantic import BaseModel
 from typing import Optional
 from uuid import UUID
 
-class IncidentSubmit(BaseModel):
+class EmergencySubmit(BaseModel):
     type: str
     description: str
     location_lat: Optional[float]
     location_lon: Optional[float]
 
-class IncidentValidate(BaseModel):
+class EmergencyValidate(BaseModel):
     status: str
     rejection_reason: Optional[str]
 
-class IncidentResponse(BaseModel):
+class EmergencyResponse(BaseModel):
     id: UUID
     user_id: UUID
     type: str
@@ -24,7 +24,7 @@ class IncidentResponse(BaseModel):
     validated_at: Optional[str]
     rejection_reason: Optional[str]
 
-class IncidentReject(BaseModel):
+class EmergencyReject(BaseModel):
     rejection_reason: str
 
 class EmergencySubmit(BaseModel):
@@ -40,7 +40,6 @@ class EmergencySubmit(BaseModel):
 class EmergencyValidate(BaseModel):
     status: str
     rejection_reason: Optional[str]
-    responder_id: Optional[UUID]
 
 class EmergencyResponse(BaseModel):
     id: UUID
