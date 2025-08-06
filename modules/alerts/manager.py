@@ -9,10 +9,16 @@ from firebase_admin import credentials, messaging
 import os
 from fastapi import WebSocket
 from typing import Any
+import json
 
 # Initialize Firebase app (only once)
 if not firebase_admin._apps:
-    cred = credentials.Certificate(os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase_service_account.json"))
+    firebase_credentials_json = os.getenv("FIREBASE_CREDENTIALS")
+    if not firebase_credentials_json:
+        raise RuntimeError("FIREBASE_CREDENTIALS not set")
+
+    cred_dict = json.loads(firebase_credentials_json)
+    cred = credentials.Certificate(cred_dict)
     firebase_admin.initialize_app(cred)
 
 from modules.shared.db import execute_query
