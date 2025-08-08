@@ -107,14 +107,14 @@ async def trigger_alert(alert: AlertTrigger, current_user: dict = Depends(get_cu
         logger.info(f"Creating alert with id: {alert_id} and data: {alert}")
         query = """
         INSERT INTO alerts 
-        (id, trigger_source, type, message, location_lat, location_lon, radius_km, created_at, triggered_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
+        (id, trigger_source, type, message, broadcast_type, location_lat, location_lon, radius_km, created_at, triggered_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)
         RETURNING id, created_at
         """
-        logger.debug(f"Executing alert insert query: {query} with params: {(alert_id, alert.trigger_source, alert.broadcast_type, alert.message, alert.location_lat, alert.location_lon, alert.radius_km, current_user['id'])}")
+        logger.debug(f"Executing alert insert query: {query} with params: {(alert_id, alert.trigger_source, alert.broadcast_type, alert.message, alert.broadcast_type, alert.location_lat, alert.location_lon, alert.radius_km, current_user['id'])}")
         result = await execute_query(
             query,
-            (alert_id, alert.trigger_source, alert.type, alert.message, alert.location_lat, alert.location_lon, alert.radius_km, current_user['id']),
+            (alert_id, alert.trigger_source, alert.type, alert.message, alert.broadcast_type, alert.location_lat, alert.location_lon, alert.radius_km, current_user['id']),
             commit=True,
             fetch_one=True
         )
