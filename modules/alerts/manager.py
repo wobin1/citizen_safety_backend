@@ -208,6 +208,34 @@ async def resolve_alert(alert_id: str, current_user: dict = Depends(get_current_
         logger.error(f"Error resolving alert: {e}", exc_info=True)
         return error_response(str(e), 500)
 
+async def cool_down_alert(alert_id: str, current_user: dict = Depends(get_current_user)) -> dict:
+    """cool down an alert"""
+    logger.debug(f"cool_down_alert called by user: {current_user} for alert_id: {alert_id}")
+    if current_user['role'] != 'emergency_service':
+        logger.warning(f"Permission denied for user: {current_user}")
+        return error_response("Permission denied", 403)
+
+    try:
+        query = """
+        UPDATE alerts 
+        SET status = 'COOLDOWN', 
+        cooldown_until = NOW() + INTERVAL '1 hour'
+        WHERE id = $1
+        RETURNING id
+        """
+        logger.debug(f"Executing alert cooldown query: {query} with alert_id: {alert_id}")
+        result = await execute_query(query, (alert_id,), commit=True, fetch_one=True)
+        logger.debug(f"Alert cooldown query result: {result}")
+        if not result:
+            logger.warning(f"Alert not found: {alert_id}")
+            return error_response("Alert not found", 404)
+        
+        logger.info(f"Alert cooldown: {alert_id}")
+        return success_response({"alert_id": result[0]}, "Alert cooldown successfully")
+    except Exception as e:
+        logger.error(f"Error resolving alert: {e}", exc_info=True)
+        return error_response(str(e), 500)
+
 async def get_all_active_alerts() -> dict:
     """Get active alerts"""
     logger.debug("get_alerts called to fetch active alerts")

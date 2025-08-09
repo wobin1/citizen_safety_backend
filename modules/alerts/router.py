@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Request
 from .models import AlertTrigger, AlertResponse
-from .manager import trigger_alert, resolve_alert, get_all_active_alerts, get_all_alerts
+from .manager import trigger_alert, resolve_alert, get_all_active_alerts, get_all_alerts, cool_down_alert
 from modules.auth.manager import get_current_user
 from modules.shared.response import success_response, error_response
 from uuid import uuid4
@@ -27,6 +27,11 @@ async def trigger(trigger: AlertTrigger, current_user: dict = Depends(get_curren
 async def resolve(alert_id: str, current_user: dict = Depends(get_current_user)):
     logger.debug(f"Resolve endpoint called by user: {current_user} for alert_id: {alert_id}")
     return await resolve_alert(alert_id, current_user)
+
+@router.post("/{alert_id}/cooldown")
+async def resolve(alert_id: str, current_user: dict = Depends(get_current_user)):
+    logger.debug(f"Cooldown endpoint called by user: {current_user} for alert_id: {alert_id}")
+    return await cool_down_alert(alert_id, current_user)
 
 @router.get("/")
 # async def get_active_alerts(current_user: dict = Depends(get_current_user)):
