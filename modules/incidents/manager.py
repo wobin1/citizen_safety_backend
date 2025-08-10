@@ -1,8 +1,9 @@
 import logging
 from uuid import uuid4
-from fastapi import Depends
+from fastapi import Depends, UploadFile
 from .models import IncidentSubmit, IncidentValidate
 from .utils import check_profanity, check_duplicate, notify_emergency_services, notify_citizen
+from modules.emergency.utils import upload_optional_media
 from modules.shared.db import execute_query
 from modules.shared.response import success_response, error_response
 from modules.auth.manager import get_current_user
@@ -37,14 +38,14 @@ async def submit_incident(incident: IncidentSubmit, current_user: dict = Depends
 
         query = """
         INSERT INTO incidents 
-        (id, user_id, type, description, location_lat, location_lon, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        (id, user_id, type, description, location_lat, location_lon, image_url, voice_note_url, video_url, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
         RETURNING id, created_at
         """
-        logger.debug(f"Executing query: {query} with params: {(incident_id, current_user['id'], incident.type, incident.description, incident.location_lat, incident.location_lon)}")
+        logger.debug(f"Executing query: {query} with params: {(incident_id, current_user['id'], incident.type, incident.description, incident.location_lat, incident.location_lon, None, None, None)}")
         result = await execute_query(
             query,
-            (incident_id, current_user['id'], incident.type, incident.description, incident.location_lat, incident.location_lon),
+            (incident_id, current_user['id'], incident.type, incident.description, incident.location_lat, incident.location_lon, None, None, None),
             commit=True,
             fetch_one=True
         )
@@ -63,6 +64,70 @@ async def submit_incident(incident: IncidentSubmit, current_user: dict = Depends
         }, "Incident submitted successfully")
     except Exception as e:
         logger.exception("Error submitting incident")
+        return error_response(str(e), 500)
+
+
+async def submit_incident_with_files(
+    type: str,
+    description: str,
+    location_lat: float,
+    location_lon: float,
+    image: UploadFile | None,
+    voice_note: UploadFile | None,
+    video: UploadFile | None,
+    current_user: dict,
+) -> dict:
+    """Submit incident with optional uploaded media, mirroring emergency submit behavior."""
+    logger.info("User %s is submitting an incident with files", current_user["id"])
+    try:
+        if check_profanity(description):
+            return error_response("Incident description contains inappropriate content", 400)
+
+        incident_id = str(uuid4())
+        is_duplicate = await check_duplicate(current_user['id'], type, description, datetime.now())
+        if is_duplicate:
+            return error_response("Duplicate incident detected", 400)
+
+        # Upload media in parallel
+        from asyncio import gather
+        folder = f"incidents/{incident_id}"
+        image_url, voice_note_url, video_url = await gather(
+            upload_optional_media(image, folder),
+            upload_optional_media(voice_note, folder),
+            upload_optional_media(video, folder),
+        )
+
+        query = """
+        INSERT INTO incidents 
+        (id, user_id, type, description, location_lat, location_lon, image_url, voice_note_url, video_url, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        RETURNING id, created_at
+        """
+        params = (
+            incident_id,
+            current_user['id'],
+            type,
+            description,
+            location_lat,
+            location_lon,
+            image_url,
+            voice_note_url,
+            video_url,
+        )
+        result = await execute_query(query, params, commit=True, fetch_one=True)
+
+        notify_emergency_services({
+            'id': incident_id,
+            'type': type,
+            'location': f"{location_lat},{location_lon}",
+        })
+
+        return success_response({
+            "incident_id": result[0],
+            "created_at": result[1].isoformat()
+        }, "Incident submitted successfully")
+    except Exception as e:
+        logger.exception("Error submitting incident with files")
         return error_response(str(e), 500)
 
 async def validate_incident(incident_id: str, validation: IncidentValidate, current_user: dict = Depends(get_current_user)) -> dict:

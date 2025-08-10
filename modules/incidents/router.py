@@ -1,14 +1,35 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
 from .models import IncidentSubmit, IncidentValidate, IncidentResponse, IncidentReject
-from .manager import submit_incident, validate_incident, get_incidents, get_incident, reject_incident
+from .manager import submit_incident, submit_incident_with_files, validate_incident, get_incidents, get_incident, reject_incident
 from typing import Optional, Dict
 from modules.auth.manager import get_current_user
 
 router = APIRouter()
 
 @router.post("/submit")
-async def submit(incident: IncidentSubmit, current_user: dict = Depends(get_current_user)):
-    return await submit_incident(incident, current_user)
+async def submit(
+    incident: IncidentSubmit | None = None,
+    type: str | None = Form(None),
+    description: str | None = Form(None),
+    location_lat: float | None = Form(None),
+    location_lon: float | None = Form(None),
+    image: UploadFile | None = File(None),
+    voice_note: UploadFile | None = File(None),
+    video: UploadFile | None = File(None),
+    current_user: dict = Depends(get_current_user)
+):
+    # JSON path
+    if incident is not None:
+        return await submit_incident(incident, current_user)
+    # Multipart path
+    if not all([type, description, location_lat is not None, location_lon is not None]):
+        return {"status": "error", "message": "Missing required fields", "data": None}
+    return await submit_incident_with_files(
+        type=type, description=description,
+        location_lat=float(location_lat), location_lon=float(location_lon),
+        image=image, voice_note=voice_note, video=video,
+        current_user=current_user,
+    )
 
 @router.post("/{incident_id}/validate")
 async def validate(incident_id: str, validation: IncidentValidate, current_user: dict = Depends(get_current_user)):
