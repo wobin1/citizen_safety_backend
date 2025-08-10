@@ -1,15 +1,43 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
 from .models import EmergencySubmit, EmergencyValidate, EmergencyReject
-from .manager import submit_emergency, validate_emergency, get_emergencies, get_emergency, reject_emergency, get_emergency_stats, mark_action_taken
+from .manager import submit_emergency, submit_emergency_with_files, validate_emergency, get_emergencies, get_emergency, reject_emergency, get_emergency_stats, mark_action_taken
 from typing import Optional, Dict
 from modules.auth.manager import get_current_user
 
 router = APIRouter()
 
 @router.post("/submit")
-async def submit(emergency: EmergencySubmit, current_user: dict = Depends(get_current_user)):
-    """Submit a new emergency report"""
-    return await submit_emergency(emergency, current_user)
+async def submit(
+    # JSON body path (if sent as application/json)
+    emergency: EmergencySubmit | None = None,
+    # Multipart path (if sent as form-data)
+    type: str | None = Form(None),
+    description: str | None = Form(None),
+    location_lat: float | None = Form(None),
+    location_lon: float | None = Form(None),
+    severity: str | None = Form(None),
+    image: UploadFile | None = File(None),
+    voice_note: UploadFile | None = File(None),
+    video: UploadFile | None = File(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """Submit a new emergency report (supports JSON or multipart form-data with optional files)."""
+    if emergency is not None:
+        return await submit_emergency(emergency, current_user)
+    # Fallback to multipart form
+    if not all([type, description, location_lat is not None, location_lon is not None, severity]):
+        return {"status": "error", "message": "Missing required fields", "data": None}
+    return await submit_emergency_with_files(
+        type=type,
+        description=description,
+        location_lat=float(location_lat),
+        location_lon=float(location_lon),
+        severity=severity,
+        image=image,
+        voice_note=voice_note,
+        video=video,
+        current_user=current_user,
+    )
 
 @router.post("/{emergency_id}/validate")
 async def validate(emergency_id: str, validation: EmergencyValidate, current_user: dict = Depends(get_current_user)):

@@ -4,7 +4,14 @@ from fastapi import Depends
 from datetime import datetime
 from typing import Optional, Dict
 from .models import EmergencySubmit, EmergencyValidate, EmergencyReject
-from .utils import check_profanity, check_duplicate, notify_emergency_services, notify_citizen
+from .utils import (
+    check_profanity,
+    check_duplicate,
+    notify_emergency_services,
+    notify_citizen,
+    upload_optional_media,
+)
+from fastapi import UploadFile
 from modules.shared.db import execute_query
 from modules.shared.response import success_response, error_response
 from modules.auth.manager import get_current_user
@@ -19,7 +26,10 @@ def serialize_row(row):
             d[k] = v.isoformat()
     return d
 
-async def submit_emergency(emergency: EmergencySubmit, current_user: dict = Depends(get_current_user)) -> dict:
+async def submit_emergency(
+    emergency: EmergencySubmit,
+    current_user: dict = Depends(get_current_user)
+) -> dict:
     """Submit a new emergency report"""
     logger.info(f"User {current_user['id']} is submitting an emergency: {emergency}")
     try:
@@ -74,6 +84,86 @@ async def submit_emergency(emergency: EmergencySubmit, current_user: dict = Depe
     except Exception as e:
         logger.exception("Error submitting emergency")
         return error_response(str(e), 500)
+
+
+async def submit_emergency_with_files(
+    type: str,
+    description: str,
+    location_lat: float,
+    location_lon: float,
+    severity: str,
+    image: UploadFile | None,
+    voice_note: UploadFile | None,
+    video: UploadFile | None,
+    current_user: dict,
+) -> dict:
+    """Submit emergency accepting optional media files; uploads to Cloudinary then persists URLs.
+
+    This keeps JSON-based submit working while enabling multipart form submissions.
+    """
+    logger.info("User %s is submitting an emergency with files", current_user["id"])
+    try:
+        if check_profanity(description):
+            return error_response("Emergency description contains inappropriate content", 400)
+
+        emergency_id = str(uuid4())
+        is_duplicate = await check_duplicate(current_user['id'], type, description, datetime.now())
+        if is_duplicate:
+            return error_response("Duplicate emergency detected", 400)
+
+        # Upload media concurrently
+        folder = f"emergencies/{emergency_id}"
+        image_url, voice_note_url, video_url = await _upload_all_media(image, voice_note, video, folder)
+
+        query = """
+        INSERT INTO emergency 
+        (id, user_id, type, description, location_lat, location_lon, severity, 
+         image_url, voice_note_url, video_url, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+        RETURNING id, created_at
+        """
+        params = (
+            emergency_id,
+            current_user['id'],
+            type,
+            description,
+            location_lat,
+            location_lon,
+            severity,
+            image_url,
+            voice_note_url,
+            video_url,
+        )
+        result = await execute_query(query, params, commit=True, fetch_one=True)
+
+        notify_emergency_services({
+            'id': emergency_id,
+            'type': type,
+            'location': f"{location_lat},{location_lon}",
+            'severity': severity
+        })
+
+        return success_response({
+            "emergency_id": result[0],
+            "created_at": result[1].isoformat()
+        }, "Emergency submitted successfully")
+    except Exception as e:
+        logger.exception("Error submitting emergency with files")
+        return error_response(str(e), 500)
+
+
+async def _upload_all_media(
+    image: UploadFile | None,
+    voice_note: UploadFile | None,
+    video: UploadFile | None,
+    folder: str,
+):
+    """Helper to upload three optional media files in parallel."""
+    from asyncio import gather
+    image_task = upload_optional_media(image, folder)
+    voice_task = upload_optional_media(voice_note, folder)
+    video_task = upload_optional_media(video, folder)
+    return await gather(image_task, voice_task, video_task)
 
 async def validate_emergency(emergency_id: str, validation: EmergencyValidate, current_user: dict = Depends(get_current_user)) -> dict:
     """Validate or reject an emergency"""
