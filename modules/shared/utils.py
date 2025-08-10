@@ -12,19 +12,19 @@ async def get_all_locations():
     try:
         # Query for incidents
         incidents_query = """
-            SELECT location_lat, location_lon
+            SELECT location_lat, location_lon, description
             FROM incidents
             WHERE location_lat IS NOT NULL AND location_lon IS NOT NULL
         """
         # Query for alerts
         alerts_query = """
-            SELECT location_lat, location_lon
+            SELECT location_lat, location_lon, message as description
             FROM alerts
             WHERE location_lat IS NOT NULL AND location_lon IS NOT NULL
         """
         # Query for emergency
         emergency_query = """
-            SELECT location_lat, location_lon
+            SELECT location_lat, location_lon, description
             FROM emergency
             WHERE location_lat IS NOT NULL AND location_lon IS NOT NULL
         """
@@ -39,18 +39,21 @@ async def get_all_locations():
             locations.append({
                 "location_lat": float(row[0]),
                 "location_lon": float(row[1]),
+                "description": row[2],
                 "type": "Incident"
             })
         for row in alerts:
             locations.append({
                 "location_lat": float(row[0]),
                 "location_lon": float(row[1]),
+                "description": row[2],
                 "type": "Alert"
             })
         for row in emergencies:
             locations.append({
                 "location_lat": float(row[0]),
                 "location_lon": float(row[1]),
+                "description": row[2],
                 "type": "Emergency"
             })
 
