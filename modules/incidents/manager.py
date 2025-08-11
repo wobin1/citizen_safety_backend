@@ -9,6 +9,7 @@ from modules.shared.response import success_response, error_response
 from modules.auth.manager import get_current_user
 from typing import Optional
 from datetime import datetime
+from modules.notifications.manager import notify_broadcast
 
 logger = logging.getLogger("incidents.manager")
 
@@ -55,6 +56,13 @@ async def submit_incident(incident: IncidentSubmit, current_user: dict = Depends
             'id': incident_id,
             'type': incident.type,
             'location': f"{incident.location_lat},{incident.location_lon}"
+        })
+
+        await notify_broadcast("incident.reported", {
+            "id": incident_id,
+            "type": incident.type,
+            "location_lat": incident.location_lat,
+            "location_lon": incident.location_lon,
         })
 
         logger.info(f"Incident {incident_id} submitted successfully")
@@ -162,6 +170,7 @@ async def validate_incident(incident_id: str, validation: IncidentValidate, curr
             logger.info(f"Incident {incident_id} rejected, notifying citizen")
             notify_citizen(incident_id, validation.rejection_reason)
         logger.info(f"Incident {incident_id} validated successfully")
+        await notify_broadcast("incident.updated", {"id": result[0], "status": validation.status})
         return success_response({"incident_id": result[0]}, "Incident validated successfully")
     except Exception as e:
         logger.exception("Error validating incident")

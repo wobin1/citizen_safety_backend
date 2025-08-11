@@ -81,6 +81,24 @@ async def create_tables():
         CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents (status);
         CREATE INDEX IF NOT EXISTS idx_emergency_user_id ON emergency (user_id);
         CREATE INDEX IF NOT EXISTS idx_emergency_status ON emergency (status);
+
+        -- Notification table: Stores notifications sent to users about alerts and emergencies
+        CREATE TABLE IF NOT EXISTS notifications (
+            id UUID PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            alert_id UUID REFERENCES alerts(id) ON DELETE CASCADE,
+            emergency_id UUID REFERENCES emergency(id) ON DELETE CASCADE,
+            type VARCHAR(30) NOT NULL CHECK (type IN ('alert', 'report')),
+            message TEXT NOT NULL,
+            is_read BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+
+        -- Indexes for efficient notification queries
+        CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id);
+        CREATE INDEX IF NOT EXISTS idx_notifications_alert_id ON notifications (alert_id);
+        CREATE INDEX IF NOT EXISTS idx_notifications_emergency_id ON notifications (emergency_id);
+        CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications (is_read);
     """
     try:
         async with get_db_connection() as conn:

@@ -12,6 +12,7 @@ from modules.alerts.router import router as alerts_router
 from modules.shared.schema import create_tables
 from modules.emergency.router import router as emergency_router
 from modules.map.router import router as map_router
+from modules.notifications.router import router as notifications_router
 import os
 from dotenv import load_dotenv
 from fastapi import HTTPException
@@ -37,6 +38,7 @@ app.include_router(incidents_router, prefix="/api/incidents")
 app.include_router(alerts_router, prefix="/api/alerts")
 app.include_router(emergency_router, prefix="/api/emergency")
 app.include_router(map_router, prefix="/api/map")
+app.include_router(notifications_router, prefix="/api/notifications")
 
 @app.on_event("startup")
 async def startup_event():

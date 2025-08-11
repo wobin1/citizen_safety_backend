@@ -15,6 +15,7 @@ from fastapi import UploadFile
 from modules.shared.db import execute_query
 from modules.shared.response import success_response, error_response
 from modules.auth.manager import get_current_user
+from modules.notifications.manager import notify_broadcast, notify_user
 
 logger = logging.getLogger("emergency.manager")
 
@@ -74,6 +75,15 @@ async def submit_emergency(
             'type': emergency.type,
             'location': f"{emergency.location_lat},{emergency.location_lon}",
             'severity': emergency.severity
+        })
+
+        # fire realtime notifications
+        await notify_broadcast("emergency.reported", {
+            "id": emergency_id,
+            "type": emergency.type,
+            "location_lat": emergency.location_lat,
+            "location_lon": emergency.location_lon,
+            "severity": emergency.severity,
         })
 
         logger.info(f"Emergency {emergency_id} submitted successfully")
@@ -197,6 +207,8 @@ async def validate_emergency(emergency_id: str, validation: EmergencyValidate, c
         if validation.status == 'CANCELLED':
             logger.info(f"Emergency {emergency_id} cancelled, notifying citizen")
             notify_citizen(emergency_id, validation.rejection_reason or "Emergency cancelled")
+        # Push validation update
+        await notify_broadcast("emergency.updated", {"id": emergency_id, "status": validation.status})
         logger.info(f"Emergency {emergency_id} validated successfully")
         return success_response({"emergency_id": result[0]}, "Emergency validated successfully")
     except Exception as e:
@@ -233,6 +245,7 @@ async def mark_action_taken(emergency_id: str, current_user: dict) -> dict:
             return error_response("Emergency not found", 404)
 
         logger.info(f"Emergency {emergency_id} marked as action taken (VALIDATED) successfully")
+        await notify_broadcast("emergency.action_taken", {"id": result[0]})
         return success_response({"emergency_id": result[0]}, "Emergency marked as action taken (VALIDATED) successfully")
     except Exception as e:
         logger.exception("Error marking emergency as action taken")
