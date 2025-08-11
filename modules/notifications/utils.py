@@ -10,7 +10,6 @@ class ConnectionManager:
         self._lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket, topic: str) -> None:
-        await websocket.accept()
         async with self._lock:
             self._topic_to_connections.setdefault(topic, set()).add(websocket)
 

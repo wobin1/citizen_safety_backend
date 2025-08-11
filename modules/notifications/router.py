@@ -22,9 +22,10 @@ async def ws_notifications(websocket: WebSocket, topic: str = Query(topic_broadc
 
 @router.websocket("/ws/me")
 async def ws_notifications_me(websocket: WebSocket):
-    await websocket.accept()
-    
+    topic = None
     try:
+        await websocket.accept()
+        
         # Wait for the first message which should contain the token
         first_message = await websocket.receive_text()
         token_data = json.loads(first_message)
@@ -52,9 +53,15 @@ async def ws_notifications_me(websocket: WebSocket):
             await websocket.receive_text()
             
     except WebSocketDisconnect:
-        await manager.disconnect(websocket, topic)
+        if topic:
+            await manager.disconnect(websocket, topic)
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        await websocket.close(code=4000, reason="Internal error")
+        if topic:
+            await manager.disconnect(websocket, topic)
+        try:
+            await websocket.close(code=4000, reason="Internal error")
+        except:
+            pass
 
 
