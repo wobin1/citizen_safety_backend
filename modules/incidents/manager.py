@@ -9,7 +9,7 @@ from modules.shared.response import success_response, error_response
 from modules.auth.manager import get_current_user
 from typing import Optional
 from datetime import datetime
-from modules.notifications.manager import notify_broadcast
+from modules.notifications.manager import notify_broadcast, notify_emergency_service_and_admin
 
 logger = logging.getLogger("incidents.manager")
 
@@ -58,11 +58,12 @@ async def submit_incident(incident: IncidentSubmit, current_user: dict = Depends
             'location': f"{incident.location_lat},{incident.location_lon}"
         })
 
-        await notify_broadcast("incident.reported", {
-            "id": incident_id,
+        await notify_emergency_service_and_admin("incident.reported", {
+            "incident_id": incident_id,
             "type": incident.type,
             "location_lat": incident.location_lat,
             "location_lon": incident.location_lon,
+            "status": "PENDING"
         })
 
         logger.info(f"Incident {incident_id} submitted successfully")
@@ -130,6 +131,14 @@ async def submit_incident_with_files(
             'location': f"{location_lat},{location_lon}",
         })
 
+        await notify_emergency_service_and_admin("incident.reported", {
+            "incident_id": incident_id,
+            "type": type,
+            "location_lat": location_lat,
+            "location_lon": location_lon,
+            "status": "PENDING"
+        })
+
         return success_response({
             "incident_id": result[0],
             "created_at": result[1].isoformat()
@@ -170,7 +179,7 @@ async def validate_incident(incident_id: str, validation: IncidentValidate, curr
             logger.info(f"Incident {incident_id} rejected, notifying citizen")
             notify_citizen(incident_id, validation.rejection_reason)
         logger.info(f"Incident {incident_id} validated successfully")
-        await notify_broadcast("incident.updated", {"id": result[0], "status": validation.status})
+        await notify_emergency_service_and_admin("incident.updated", {"incident_id": result[0], "status": validation.status})
         return success_response({"incident_id": result[0]}, "Incident validated successfully")
     except Exception as e:
         logger.exception("Error validating incident")

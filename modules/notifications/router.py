@@ -3,6 +3,12 @@ from .utils import manager, topic_for_user, topic_broadcast_all
 from modules.auth.manager import get_current_user, decode_token
 import json
 import logging
+from fastapi import Depends
+from fastapi.responses import JSONResponse
+from fastapi import status
+
+from modules.auth.manager import get_current_user
+
 
 logger = logging.getLogger(__name__)
 
@@ -64,4 +70,12 @@ async def ws_notifications_me(websocket: WebSocket):
         except:
             pass
 
+
+@router.get("/all")
+async def get_my_notifications(current_user=Depends(get_current_user)):
+    """
+    Get all notifications for the current user.
+    """
+    notifications = await get_all_notifications(current_user.id)
+    return notifications
 
