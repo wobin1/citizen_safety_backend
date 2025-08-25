@@ -4,6 +4,7 @@
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL CHECK (role IN ('citizen', 'emergency_service', 'admin')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -36,4 +37,12 @@ CREATE TABLE IF NOT EXISTS alerts (
     status VARCHAR(20) NOT NULL CHECK (status IN ('ACTIVE', 'COOLDOWN', 'RESOLVED')) DEFAULT 'ACTIVE',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     cooldown_until TIMESTAMP WITH TIME ZONE
+);
+
+-- Password reset tokens table
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    token TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL
 );

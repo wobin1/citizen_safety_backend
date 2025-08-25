@@ -1,6 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from .utils import manager, topic_for_user, topic_broadcast_all
 from modules.auth.manager import get_current_user, decode_token
+from .manager import notify_emergency_service_and_admin
 import json
 import logging
 from fastapi import Depends
@@ -79,3 +80,6 @@ async def get_my_notifications(current_user=Depends(get_current_user)):
     notifications = await get_all_notifications(current_user.id)
     return notifications
 
+@router.post("/send-notice")
+async def send_notification():
+    await notify_emergency_service_and_admin("hello world", {"test": "this is a test"})

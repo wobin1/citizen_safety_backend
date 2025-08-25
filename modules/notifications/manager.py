@@ -30,10 +30,15 @@ async def get_users_by_role(role: str) -> List[str]:
         logger.debug(f"Fetching users with role: {role}")
         result = await execute_query(
             "SELECT id FROM users WHERE role = $1",
-            (role,),
-            fetch_all=True
+            (role,)
         )
-        user_ids = [row[0] for row in result] if result else []
+        # If execute_query returns a single row, wrap in list; else, use as is
+        if result is None:
+            user_ids = []
+        elif isinstance(result, list):
+            user_ids = [row[0] for row in result]
+        else:
+            user_ids = [result[0]]
         logger.info(f"Found {len(user_ids)} users with role '{role}'")
         return user_ids
     except Exception as e:
