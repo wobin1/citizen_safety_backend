@@ -73,6 +73,13 @@ async def create_tables():
             rejection_reason TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    token TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
         -- Create standard indexes for location-based queries
         CREATE INDEX IF NOT EXISTS idx_incidents_location ON incidents (location_lat, location_lon);
         CREATE INDEX IF NOT EXISTS idx_emergency_location ON emergency (location_lat, location_lon);
